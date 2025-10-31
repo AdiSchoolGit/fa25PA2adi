@@ -30,12 +30,17 @@ int main() {
 
     // Step 2: Create leaf nodes for each character with nonzero frequency
     int nextFree = createLeafNodes(freq);
+    if (nextFree == 0) {
+        cout << "No alphabetic characters found.\n";
+        return 0;
+    }
 
     // Step 3: Build encoding tree using your heap
     int root = buildEncodingTree(nextFree);
 
     // Step 4: Generate binary codes using an STL stack
     string codes[26];
+    for (int i = 0; i < 26; ++i) codes[i].clear();
     generateCodes(root, codes);
 
     // Step 5: Encode the message and print output
@@ -74,12 +79,20 @@ void buildFrequencyTable(int freq[], const string& filename) {
 // Step 2: Create leaf nodes for each character
 int createLeafNodes(int freq[]) {
     int nextFree = 0;
+    // Initialize all nodes to defaults
+    for (int i = 0; i < MAX_NODES; ++i) {
+        charArr[i] = '\0';
+        weightArr[i] = 0;
+        leftArr[i] = -1;
+        rightArr[i] = -1;
+    }
+
     for (int i = 0; i < 26; ++i) {
         if (freq[i] > 0) {
-            charArr[nextFree] = 'a' + i;
+            charArr[nextFree]   = char('a' + i);
             weightArr[nextFree] = freq[i];
-            leftArr[nextFree] = -1;
-            rightArr[nextFree] = -1;
+            leftArr[nextFree]   = -1;
+            rightArr[nextFree]  = -1;
             nextFree++;
         }
     }
@@ -89,24 +102,80 @@ int createLeafNodes(int freq[]) {
 
 // Step 3: Build the encoding tree using heap operations
 int buildEncodingTree(int nextFree) {
-    // TODO:
-    // 1. Create a MinHeap object.
-    // 2. Push all leaf node indices into the heap.
-    // 3. While the heap size is greater than 1:
-    //    - Pop two smallest nodes
-    //    - Create a new parent node with combined weight
-    //    - Set left/right pointers
-    //    - Push new parent index back into the heap
-    // 4. Return the index of the last remaining node (root)
-    return -1; // placeholder
+    // 1) Create a MinHeap
+    MinHeap hp;
+
+    // 2) Push all leaf indices
+    for (int i = 0; i < nextFree; ++i) {
+        hp.push(i, weightArr);
+    }
+
+    // Edge case: only one symbol
+    if (hp.size == 1) {
+        return hp.pop(weightArr);
+    }
+
+    int curr = nextFree; // next free index for internal nodes
+
+    // 3) Combine nodes until one root remains
+    while (hp.size > 1) {
+        int a = hp.pop(weightArr);
+        int b = hp.pop(weightArr);
+
+        if (curr >= MAX_NODES) {
+            cerr << "Error: node array overflow.\n";
+            return a; // return something valid to avoid UB
+        }
+
+        // Create parent node
+        charArr[curr]   = '\0'; // internal
+        weightArr[curr] = weightArr[a] + weightArr[b];
+        leftArr[curr]   = a;
+        rightArr[curr]  = b;
+
+        hp.push(curr, weightArr);
+        curr++;
+    }
+
+    // 4) Return root index
+    return hp.pop(weightArr);
 }
 
 // Step 4: Use an STL stack to generate codes
 void generateCodes(int root, string codes[]) {
-    // TODO:
-    // Use stack<pair<int, string>> to simulate DFS traversal.
-    // Left edge adds '0', right edge adds '1'.
-    // Record code when a leaf node is reached.
+    if (root < 0) return;
+
+    // Single-node case: only one character in input
+    if (leftArr[root] == -1 && rightArr[root] == -1) {
+        if (charArr[root] >= 'a' && charArr[root] <= 'z') {
+            codes[charArr[root] - 'a'] = "0";
+        }
+        return;
+    }
+
+    // Iterative DFS using stack of (node, code)
+    stack<pair<int, string>> st;
+    st.push({root, ""});
+
+    while (!st.empty()) {
+        auto [u, code] = st.top();
+        st.pop();
+
+        int L = leftArr[u], R = rightArr[u];
+        bool leaf = (L == -1 && R == -1);
+
+        if (leaf) {
+            // Leaf: record its code into codes[letter]
+            if (charArr[u] >= 'a' && charArr[u] <= 'z') {
+                // If code is empty (shouldn't happen here), use "0"
+                codes[charArr[u] - 'a'] = (code.empty() ? "0" : code);
+            }
+        } else {
+            // Push right first so left is processed first
+            if (R != -1) st.push({R, code + "1"});
+            if (L != -1) st.push({L, code + "0"});
+        }
+    }
 }
 
 // Step 5: Print table and encoded message
@@ -120,12 +189,18 @@ void encodeMessage(const string& filename, string codes[]) {
     cout << "\nEncoded message:\n";
 
     ifstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Error: could not open " << filename << "\n";
+        return;
+    }
+
     char ch;
     while (file.get(ch)) {
         if (ch >= 'A' && ch <= 'Z')
             ch = ch - 'A' + 'a';
         if (ch >= 'a' && ch <= 'z')
             cout << codes[ch - 'a'];
+        // per spec: ignore non-letters
     }
     cout << "\n";
     file.close();
